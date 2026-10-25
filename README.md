@@ -5,6 +5,10 @@ It plots every island at its real in-game coordinates, shows where each sea even
 you can find on each island, and turns the full quest list into a progress-tracking log with numbered
 start → waypoint → finish pins on the map.
 
+### 🌐 [Live Demo →](https://djsaintg.github.io/Spiritfarer-Interactive-Map/)
+
+[![Deploy to GitHub Pages](https://github.com/djsaintg/Spiritfarer-Interactive-Map/actions/workflows/deploy.yml/badge.svg)](https://github.com/djsaintg/Spiritfarer-Interactive-Map/actions/workflows/deploy.yml)
+
 ---
 
 ## Features
