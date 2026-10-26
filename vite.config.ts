@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./", // relative URLs so the build works on GitHub Pages' /<repo>/ path and from file://
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
     alias: {

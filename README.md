@@ -17,9 +17,9 @@ start → waypoint → finish pins on the map.
 - **All 38 locations** plotted at their in-game map coordinates, grouped into the six regions
   (Everdoor, Hummingberg, Furogawa, Industrial District, Oxbury, Crow's End)
 - **Two backgrounds, one toggle:** a hand-drawn *sea chart* (works offline) or the community *world map* image from the Fandom wiki, with pins calibrated to it
-- **Pan & zoom** (mouse wheel / drag / buttons), coordinate grid matching the in-game map
+- **Pan & zoom** (mouse wheel / drag / buttons, or **pinch, two-finger pan and double-tap** on touch screens), coordinate grid matching the in-game map
 - **Layers:** islands, names, sea events, shrines, active quest pins, bus stops, treasure-map spots, grid
-- **Hover tooltips** on every pin, **click** to open details in the sidebar
+- **Hover tooltips** on every pin, **click/tap** to open details in the sidebar
 - **Secret locations** (Lost Shrine, Hidden Shrine) stay hidden as `???` until you visit them or turn on spoilers
 
 ### 🏝️ Islands
@@ -60,6 +60,14 @@ Farewell quests, endings, life stories and secret locations are **blurred until 
 ---
 
 ## Running the App
+
+### 📱 Phone or tablet (install as an app)
+Open the [live demo](https://djsaintg.github.io/Spiritfarer-Interactive-Map/) and add it to your home screen:
+- **Android (Chrome / Edge):** tap the **Install** button in the header, or ⋮ menu → *Install app*
+- **iPhone / iPad (Safari):** Share button → *Add to Home Screen*
+
+It opens full-screen like a native app and keeps working offline: the app itself is cached, and wiki artwork is cached as you browse it.
+Progress is saved on the device; use **Progress → Export** to move it between phone and desktop.
 
 ### Linux (recommended)
 A self-contained shell script handles everything: installing Node.js, building, and launching.
@@ -113,7 +121,8 @@ and derives each quest's map route from the location field and the places named 
 | [clsx](https://github.com/lukeed/clsx) | 2.1.1 | MIT |
 | [tailwind-merge](https://github.com/dcastil/tailwind-merge) | 3.4.0 | MIT |
 
-The map is plain SVG with a custom pan/zoom; no mapping library needed.
+The map is plain SVG with a custom pan/zoom and pinch-zoom; no mapping library needed.
+A web app manifest and a small service worker (`public/`) make the GitHub Pages build installable and usable offline.
 
 ---
 

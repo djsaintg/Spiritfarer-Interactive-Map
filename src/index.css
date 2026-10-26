@@ -18,8 +18,16 @@ html {
 
 body {
   background: #0b1622;
+  overscroll-behavior: none; /* no pull-to-refresh / rubber-banding while panning the map */
+  -webkit-tap-highlight-color: transparent;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* Slim scrollbars for the sidebar */
 * { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+
+/* Touch screens: iOS zooms the page when focusing inputs under 16px, so bump them up. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 16px; }
+  input[type="checkbox"] { width: 1.05rem; height: 1.05rem; }
+}

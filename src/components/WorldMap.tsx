@@ -138,19 +138,75 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     animateTo({ k, tx: c.x - (c.x - view.tx) * (k / view.k), ty: c.y - (c.y - view.ty) * (k / view.k) });
   };
 
+  // ── Pointer gestures: one pointer pans, two pointers pinch-zoom + pan, double-tap zooms in.
+  // Hover tooltips are mouse-only; on touch a tap selects and the side panel shows the details.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; wx: number; wy: number; k: number } | null>(null);
+  const lastTap = useRef({ t: 0, x: 0, y: 0 });
+
+  const startPinch = () => {
+    const [a, b] = [...pointers.current.values()];
+    const m = toViewBox((a.x + b.x) / 2, (a.y + b.y) / 2), v = viewRef.current;
+    // Remember the map point under the fingers' midpoint so it stays there while zooming.
+    pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, wx: (m.x - v.tx) / v.k, wy: (m.y - v.ty) / v.k, k: v.k };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     cancelAnimationFrame(anim.current);
-    drag.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) {
+      drag.current = { x: e.clientX, y: e.clientY, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: false };
+      return;
+    }
+    // Second finger down: switch to pinching. Mark as moved so the gesture never counts as a tap.
+    const svg = e.currentTarget as Element;
+    for (const id of pointers.current.keys()) if (!svg.hasPointerCapture(id)) svg.setPointerCapture(id);
+    if (drag.current) drag.current.moved = true;
+    else drag.current = { x: e.clientX, y: e.clientY, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: true };
+    startPinch();
+    setTip(null);
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pz = pinch.current;
+    if (pz && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const m = toViewBox((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const k = Math.max(MIN_K, Math.min(MAX_K, pz.k * Math.hypot(a.x - b.x, a.y - b.y) / pz.dist));
+      setView({ k, tx: m.x - pz.wx * k, ty: m.y - pz.wy * k });
+      return;
+    }
     const d = drag.current;
     if (!d) return;
-    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < (e.pointerType === "mouse" ? 4 : 8)) return;
     if (!d.moved) { d.moved = true; (e.currentTarget as Element).setPointerCapture(e.pointerId); }
     const a = toViewBox(d.x, d.y), b = toViewBox(e.clientX, e.clientY);
     setView(v => ({ ...v, tx: d.tx + (b.x - a.x), ty: d.ty + (b.y - a.y) }));
     setTip(null);
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!pointers.current.delete(e.pointerId)) return;
+    const left = [...pointers.current.values()];
+    if (left.length >= 2) { startPinch(); return; }
+    if (left.length === 1) {
+      // Lifted one finger of a pinch: keep panning with the other one, from where it is now.
+      pinch.current = null;
+      drag.current = { x: left[0].x, y: left[0].y, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: true };
+      return;
+    }
+    pinch.current = null;
+    if (e.type === "pointerup" && drag.current && !drag.current.moved) {
+      const now = performance.now(), lt = lastTap.current;
+      if (now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 30) {
+        lastTap.current = { t: 0, x: 0, y: 0 };
+        const v = toViewBox(e.clientX, e.clientY), cur = viewRef.current;
+        const k = Math.min(MAX_K, cur.k * 2);
+        animateTo({ k, tx: v.x - (v.x - cur.tx) * (k / cur.k), ty: v.y - (v.y - cur.ty) * (k / cur.k) });
+      } else lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+    }
+    endDrag();
   };
   const endDrag = () => { setTimeout(() => { drag.current = null; }, 0); };
   const click = (s: Selection) => (e: React.MouseEvent) => {
@@ -160,7 +216,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
   };
 
   const showTip = (content: ReactNode) => (e: React.PointerEvent) => {
-    if (drag.current?.moved) return;
+    if (drag.current?.moved || e.pointerType !== "mouse") return;
     const r = wrapRef.current!.getBoundingClientRect();
     setTip({ x: e.clientX - r.left, y: e.clientY - r.top, content });
   };
@@ -250,6 +306,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
             onClick={click({ kind: "island", id: i.id })}
             onPointerEnter={showTip(<IslandTip i={i} hidden={hidden(i)} />)} onPointerMove={showTip(<IslandTip i={i} hidden={hidden(i)} />)} onPointerLeave={hideTip}
           >
+            <circle r={s * 2} fill="transparent" /> {/* generous tap target for fingers */}
             {hi && <circle r={s * 2.4} fill="none" stroke="#fde68a" strokeWidth={1.2 * ps} className="animate-pulse" />}
             {settings.background === "chart" && i.id !== "everdoor" && (
               <path d={islandPath(i.id, s * 1.25)} fill={hidden(i) ? "#334155" : "#e9d8b4"} stroke={col} strokeWidth={0.9 * ps} />
@@ -377,7 +434,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden bg-[#0b1622]" onPointerLeave={hideTip}>
       <svg
         ref={svgRef} viewBox={`${VB.x} ${VB.y} ${VB.w} ${VB.h}`} className="h-full w-full touch-none select-none"
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onClick={() => { if (!drag.current?.moved) onSelect(null); }}
         style={{ cursor: drag.current?.moved ? "grabbing" : "grab" }}
       >
@@ -401,10 +458,10 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
       </svg>
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 right-4 flex flex-col overflow-hidden rounded-lg border border-white/10 bg-slate-900/80 shadow-lg backdrop-blur">
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => zoomBy(1.5)} title="Zoom in"><Plus size={16} /></button>
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => zoomBy(1 / 1.5)} title="Zoom out"><Minus size={16} /></button>
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => animateTo({ k: 1, tx: 0, ty: 0 })} title="Reset view"><LocateFixed size={16} /></button>
+      <div className="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-white/10 bg-slate-900/80 shadow-lg backdrop-blur sm:bottom-4 sm:right-4">
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => zoomBy(1.5)} title="Zoom in" aria-label="Zoom in"><Plus size={16} /></button>
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => zoomBy(1 / 1.5)} title="Zoom out" aria-label="Zoom out"><Minus size={16} /></button>
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => animateTo({ k: 1, tx: 0, ty: 0 })} title="Reset view" aria-label="Reset view"><LocateFixed size={16} /></button>
       </div>
       {settings.background === "wiki" && bgFailed && (
         <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-amber-900/90 px-3 py-1.5 text-xs text-amber-100">
@@ -414,7 +471,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
       <Legend />
       {tip && (
         <div className="pointer-events-none absolute z-20 max-w-sm rounded-lg border border-white/10 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-xl"
-          style={{ left: Math.min(tip.x + 14, (wrapRef.current?.clientWidth ?? 0) - 300), top: tip.y + 14 }}>
+          style={{ left: Math.max(8, Math.min(tip.x + 14, (wrapRef.current?.clientWidth ?? 0) - 300)), top: tip.y + 14 }}>
           {tip.content}
         </div>
       )}
@@ -452,10 +509,10 @@ function EventTip({ e, label }: { e: SeaEvent; label: string }) {
 function Legend() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="absolute bottom-4 left-4 max-w-xs rounded-lg border border-white/10 bg-slate-900/85 text-xs text-slate-200 shadow-lg backdrop-blur">
-      <button className="w-full px-3 py-1.5 text-left font-semibold hover:bg-white/5" onClick={() => setOpen(o => !o)}>{open ? "▾" : "▸"} Legend</button>
+    <div className="absolute bottom-3 left-3 flex max-h-[calc(100%-1.5rem)] max-w-[min(20rem,calc(100%-4.5rem))] flex-col rounded-lg border border-white/10 bg-slate-900/85 text-xs text-slate-200 shadow-lg backdrop-blur sm:bottom-4 sm:left-4">
+      <button className="w-full shrink-0 px-3 py-2 text-left font-semibold hover:bg-white/5 pointer-fine:py-1.5" onClick={() => setOpen(o => !o)}>{open ? "▾" : "▸"} Legend</button>
       {open && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 pb-3">
+        <div className="grid min-h-0 grid-cols-2 gap-x-4 gap-y-1 overflow-y-auto px-3 pb-3">
           {Object.entries(REGION_COLORS).map(([r, c]) => (
             <div key={r} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />{r}</div>
           ))}

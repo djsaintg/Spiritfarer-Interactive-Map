@@ -15,7 +15,7 @@ This project follows **[Semantic Versioning](https://semver.org)**: `MAJOR.MINOR
 | **MINOR** | New features added, fully backwards compatible | `1.0.0` → `1.1.0` |
 | **PATCH** | Bug fixes, data corrections, typo fixes, no new features | `1.0.0` → `1.0.1` |
 
-**Current release: `v1.0.0`**
+**Current release: `v1.1.0`**
 
 ---
 
@@ -39,7 +39,17 @@ This project follows **[Semantic Versioning](https://semver.org)**: `MAJOR.MINOR
 
 ---
 
-## 🔜 Ideas for v1.1.0
+## ✅ v1.1.0: Mobile
+
+- [x] Installable web app (Android "Install", iOS "Add to Home Screen") with app icon and full-screen standalone mode
+- [x] Offline support via a service worker: app cached, wiki artwork and fonts cached as you browse
+- [x] Multi-touch map: pinch to zoom, two-finger pan, double-tap to zoom in
+- [x] Phone layout: dynamic viewport height, notch / safe-area padding, adjustable map/panel split, larger tap targets
+- [x] No accidental page zoom when typing in search boxes on iOS
+
+---
+
+## 🔜 Ideas for v1.2.0
 
 - [ ] Hand-verified routes for quests where the wiki's objectives don't name the island
 - [ ] Per-island chest positions (pins inside an island view)

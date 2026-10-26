@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Compass, Eye, EyeOff, Layers, Map as MapIcon, ScrollText, Sparkles, Users } from "lucide-react";
+import { BookOpen, ChevronsDown, ChevronsUp, Compass, Download, Eye, EyeOff, Layers, Map as MapIcon, ScrollText, Sparkles, Users } from "lucide-react";
 import { useProgress, useSettings, type Settings } from "@/store";
 import type { Selection, Tab } from "@/types";
 import { cn } from "@/utils/cn";
@@ -33,6 +33,8 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [focusKey, setFocusKey] = useState(0);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [bigMap, setBigMap] = useState(false); // phones: map/panel split
+  const install = useInstallPrompt();
   const sideRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLDivElement>(null);
 
@@ -60,9 +62,9 @@ export default function App() {
   }, [selection, tab]);
 
   useEffect(() => {
-    const close =(e: MouseEvent) => { if (!layersRef.current?.contains(e.target as Node)) setLayersOpen(false); };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const close = (e: PointerEvent) => { if (!layersRef.current?.contains(e.target as Node)) setLayersOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
   }, []);
 
   const idFor = (k: NonNullable<Selection>["kind"]) => (selection?.kind === k ? selection.id : null);
@@ -71,13 +73,19 @@ export default function App() {
 
   return (
     <SpoilerContext.Provider value={settings.showSpoilers}>
-      <div className="flex h-screen flex-col bg-[#0b1622] text-slate-100">
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-gradient-to-r from-[#132a3e] via-[#1a2f45] to-[#2a2440] px-4 py-2.5">
+      <div className="flex h-screen h-dvh flex-col bg-[#0b1622] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] text-slate-100">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-gradient-to-r from-[#132a3e] via-[#1a2f45] to-[#2a2440] px-3 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] sm:px-4">
           <div className="flex items-baseline gap-2">
             <h1 className="font-display text-xl font-semibold tracking-wide text-amber-100">Spiritfarer</h1>
             <span className="font-hand text-lg text-amber-200/70">Everlight Atlas</span>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {install && (
+              <button onClick={install} className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/40 bg-amber-300/10 px-2.5 py-1 text-xs text-amber-100 hover:bg-amber-300/20"
+                title="Install the Atlas as an app (works offline)">
+                <Download size={14} /> Install
+              </button>
+            )}
             <Segmented value={settings.background} onChange={v => setSettings(s => ({ ...s, background: v }))}
               options={[{ value: "chart", label: "Sea chart" }, { value: "wiki", label: "Wiki map" }]} />
             <div className="relative" ref={layersRef}>
@@ -105,16 +113,20 @@ export default function App() {
               className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs",
                 settings.showSpoilers ? "border-rose-300/40 bg-rose-300/10 text-rose-100" : "border-white/10 bg-slate-950/50 text-slate-200 hover:bg-white/5")}
               title="Story spoilers (farewells, endings, secret places) are blurred until clicked. Toggle to show them all.">
-              {settings.showSpoilers ? <Eye size={14} /> : <EyeOff size={14} />} Spoilers {settings.showSpoilers ? "shown" : "hidden"}
+              {settings.showSpoilers ? <Eye size={14} /> : <EyeOff size={14} />} Spoilers<span className="hidden sm:inline"> {settings.showSpoilers ? "shown" : "hidden"}</span>
             </button>
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <main className="relative h-[55vh] min-h-0 md:h-auto md:flex-1">
+          <main className={cn("relative min-h-0 shrink-0 transition-[height] duration-200 md:h-auto md:flex-1 md:shrink", bigMap ? "h-[62dvh]" : "h-[45dvh]")}>
             <WorldMap settings={settings} api={api} selection={selection} onSelect={s => select(s)} focusKey={focusKey} />
           </main>
-          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/10 bg-[#101f2e] md:w-[430px] md:flex-none md:border-l md:border-t-0">
+          <button onClick={() => setBigMap(b => !b)} className="flex items-center justify-center gap-1 border-t border-white/10 bg-[#0e1c2a] py-1 text-[11px] text-slate-400 md:hidden"
+            aria-label={bigMap ? "Shrink map" : "Enlarge map"}>
+            {bigMap ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />} {bigMap ? "Smaller map" : "Bigger map"}
+          </button>
+          <aside className="flex min-h-0 flex-1 flex-col bg-[#101f2e] md:w-[360px] md:flex-none md:border-l md:border-white/10 lg:w-[430px]">
             <nav className="flex border-b border-white/10">
               {TABS.map(t => (
                 <button key={t.id} onClick={() => { setTab(t.id); if (selection && TAB_FOR[selection.kind] !== t.id) setSelection(null); }}
@@ -131,12 +143,28 @@ export default function App() {
               {tab === "spirits" && <SpiritsPanel api={api} selectedId={idFor("spirit")} onSelect={panelSelect} />}
               {tab === "progress" && <ProgressPanel api={api} />}
             </div>
-            <footer className="flex items-center gap-1.5 border-t border-white/5 px-4 py-1.5 text-[10px] text-slate-500">
-              <MapIcon size={11} /> Unofficial fan tool · data: Spiritfarer Fandom Wiki (CC-BY-SA) · Spiritfarer © Thunder Lotus Games
+            <footer className="flex items-center gap-1.5 border-t border-white/5 px-4 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 text-[10px] text-slate-500">
+              <MapIcon size={11} className="shrink-0" /> <span className="truncate">Unofficial fan tool · data: Spiritfarer Fandom Wiki (CC-BY-SA) · Spiritfarer © Thunder Lotus Games</span>
             </footer>
           </aside>
         </div>
       </div>
     </SpoilerContext.Provider>
   );
+}
+
+interface InstallEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }
+
+/** Chrome/Edge/Android "Add to home screen" prompt, captured so we can offer our own Install button. */
+function useInstallPrompt() {
+  const [evt, setEvt] = useState<InstallEvent | null>(null);
+  useEffect(() => {
+    const onPrompt = (e: Event) => { e.preventDefault(); setEvt(e as InstallEvent); };
+    const onInstalled = () => setEvt(null);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); };
+  }, []);
+  if (!evt) return null;
+  return () => { evt.prompt(); evt.userChoice.finally(() => setEvt(null)); };
 }

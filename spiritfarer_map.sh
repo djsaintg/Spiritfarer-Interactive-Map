@@ -42,6 +42,7 @@ echo "✅  Node $(node --version)  /  npm $(npm --version)"
 echo ""
 echo "📝  Writing project files..."
 
+mkdir -p "public"
 mkdir -p "src"
 mkdir -p "src/components"
 mkdir -p "src/data"
@@ -51,7 +52,7 @@ cat > "package.json" << 'SPIRITFARER_EOF'
 {
   "name": "spiritfarer-map",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -87,7 +88,7 @@ cat > "tsconfig.json" << 'SPIRITFARER_EOF'
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "vite/client"],
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -118,8 +119,17 @@ cat > "index.html" << 'SPIRITFARER_EOF'
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Spiritfarer — Everlight Atlas</title>
+    <meta name="description" content="Unofficial interactive island map and quest log for Spiritfarer." />
+    <meta name="theme-color" content="#132a3e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Everlight Atlas" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -147,6 +157,7 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./", // relative URLs so the build works on GitHub Pages' /<repo>/ path and from file://
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
     alias: {
@@ -158,7 +169,7 @@ SPIRITFARER_EOF
 
 cat > "src/App.tsx" << 'SPIRITFARER_EOF'
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Compass, Eye, EyeOff, Layers, Map as MapIcon, ScrollText, Sparkles, Users } from "lucide-react";
+import { BookOpen, ChevronsDown, ChevronsUp, Compass, Download, Eye, EyeOff, Layers, Map as MapIcon, ScrollText, Sparkles, Users } from "lucide-react";
 import { useProgress, useSettings, type Settings } from "@/store";
 import type { Selection, Tab } from "@/types";
 import { cn } from "@/utils/cn";
@@ -192,6 +203,8 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(null);
   const [focusKey, setFocusKey] = useState(0);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [bigMap, setBigMap] = useState(false); // phones: map/panel split
+  const install = useInstallPrompt();
   const sideRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<HTMLDivElement>(null);
 
@@ -219,9 +232,9 @@ export default function App() {
   }, [selection, tab]);
 
   useEffect(() => {
-    const close =(e: MouseEvent) => { if (!layersRef.current?.contains(e.target as Node)) setLayersOpen(false); };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const close = (e: PointerEvent) => { if (!layersRef.current?.contains(e.target as Node)) setLayersOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
   }, []);
 
   const idFor = (k: NonNullable<Selection>["kind"]) => (selection?.kind === k ? selection.id : null);
@@ -230,13 +243,19 @@ export default function App() {
 
   return (
     <SpoilerContext.Provider value={settings.showSpoilers}>
-      <div className="flex h-screen flex-col bg-[#0b1622] text-slate-100">
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-gradient-to-r from-[#132a3e] via-[#1a2f45] to-[#2a2440] px-4 py-2.5">
+      <div className="flex h-screen h-dvh flex-col bg-[#0b1622] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] text-slate-100">
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/10 bg-gradient-to-r from-[#132a3e] via-[#1a2f45] to-[#2a2440] px-3 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] sm:px-4">
           <div className="flex items-baseline gap-2">
             <h1 className="font-display text-xl font-semibold tracking-wide text-amber-100">Spiritfarer</h1>
             <span className="font-hand text-lg text-amber-200/70">Everlight Atlas</span>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {install && (
+              <button onClick={install} className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/40 bg-amber-300/10 px-2.5 py-1 text-xs text-amber-100 hover:bg-amber-300/20"
+                title="Install the Atlas as an app (works offline)">
+                <Download size={14} /> Install
+              </button>
+            )}
             <Segmented value={settings.background} onChange={v => setSettings(s => ({ ...s, background: v }))}
               options={[{ value: "chart", label: "Sea chart" }, { value: "wiki", label: "Wiki map" }]} />
             <div className="relative" ref={layersRef}>
@@ -264,16 +283,20 @@ export default function App() {
               className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs",
                 settings.showSpoilers ? "border-rose-300/40 bg-rose-300/10 text-rose-100" : "border-white/10 bg-slate-950/50 text-slate-200 hover:bg-white/5")}
               title="Story spoilers (farewells, endings, secret places) are blurred until clicked. Toggle to show them all.">
-              {settings.showSpoilers ? <Eye size={14} /> : <EyeOff size={14} />} Spoilers {settings.showSpoilers ? "shown" : "hidden"}
+              {settings.showSpoilers ? <Eye size={14} /> : <EyeOff size={14} />} Spoilers<span className="hidden sm:inline"> {settings.showSpoilers ? "shown" : "hidden"}</span>
             </button>
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <main className="relative h-[55vh] min-h-0 md:h-auto md:flex-1">
+          <main className={cn("relative min-h-0 shrink-0 transition-[height] duration-200 md:h-auto md:flex-1 md:shrink", bigMap ? "h-[62dvh]" : "h-[45dvh]")}>
             <WorldMap settings={settings} api={api} selection={selection} onSelect={s => select(s)} focusKey={focusKey} />
           </main>
-          <aside className="flex min-h-0 flex-1 flex-col border-t border-white/10 bg-[#101f2e] md:w-[430px] md:flex-none md:border-l md:border-t-0">
+          <button onClick={() => setBigMap(b => !b)} className="flex items-center justify-center gap-1 border-t border-white/10 bg-[#0e1c2a] py-1 text-[11px] text-slate-400 md:hidden"
+            aria-label={bigMap ? "Shrink map" : "Enlarge map"}>
+            {bigMap ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />} {bigMap ? "Smaller map" : "Bigger map"}
+          </button>
+          <aside className="flex min-h-0 flex-1 flex-col bg-[#101f2e] md:w-[360px] md:flex-none md:border-l md:border-white/10 lg:w-[430px]">
             <nav className="flex border-b border-white/10">
               {TABS.map(t => (
                 <button key={t.id} onClick={() => { setTab(t.id); if (selection && TAB_FOR[selection.kind] !== t.id) setSelection(null); }}
@@ -290,14 +313,30 @@ export default function App() {
               {tab === "spirits" && <SpiritsPanel api={api} selectedId={idFor("spirit")} onSelect={panelSelect} />}
               {tab === "progress" && <ProgressPanel api={api} />}
             </div>
-            <footer className="flex items-center gap-1.5 border-t border-white/5 px-4 py-1.5 text-[10px] text-slate-500">
-              <MapIcon size={11} /> Unofficial fan tool · data: Spiritfarer Fandom Wiki (CC-BY-SA) · Spiritfarer © Thunder Lotus Games
+            <footer className="flex items-center gap-1.5 border-t border-white/5 px-4 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 text-[10px] text-slate-500">
+              <MapIcon size={11} className="shrink-0" /> <span className="truncate">Unofficial fan tool · data: Spiritfarer Fandom Wiki (CC-BY-SA) · Spiritfarer © Thunder Lotus Games</span>
             </footer>
           </aside>
         </div>
       </div>
     </SpoilerContext.Provider>
   );
+}
+
+interface InstallEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }
+
+/** Chrome/Edge/Android "Add to home screen" prompt, captured so we can offer our own Install button. */
+function useInstallPrompt() {
+  const [evt, setEvt] = useState<InstallEvent | null>(null);
+  useEffect(() => {
+    const onPrompt = (e: Event) => { e.preventDefault(); setEvt(e as InstallEvent); };
+    const onInstalled = () => setEvt(null);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); };
+  }, []);
+  if (!evt) return null;
+  return () => { evt.prompt(); evt.userChoice.finally(() => setEvt(null)); };
 }
 SPIRITFARER_EOF
 
@@ -391,11 +430,19 @@ html {
 
 body {
   background: #0b1622;
+  overscroll-behavior: none; /* no pull-to-refresh / rubber-banding while panning the map */
+  -webkit-tap-highlight-color: transparent;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* Slim scrollbars for the sidebar */
 * { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+
+/* Touch screens: iOS zooms the page when focusing inputs under 16px, so bump them up. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 16px; }
+  input[type="checkbox"] { width: 1.05rem; height: 1.05rem; }
+}
 SPIRITFARER_EOF
 
 cat > "src/main.tsx" << 'SPIRITFARER_EOF'
@@ -409,6 +456,11 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </StrictMode>
 );
+
+// Offline support for the installed (home-screen) app. Skipped for file:// (the local launcher) and the dev server.
+if ("serviceWorker" in navigator && import.meta.env.PROD && location.protocol !== "file:") {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+}
 SPIRITFARER_EOF
 
 cat > "src/store.ts" << 'SPIRITFARER_EOF'
@@ -1492,19 +1544,75 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     animateTo({ k, tx: c.x - (c.x - view.tx) * (k / view.k), ty: c.y - (c.y - view.ty) * (k / view.k) });
   };
 
+  // ── Pointer gestures: one pointer pans, two pointers pinch-zoom + pan, double-tap zooms in.
+  // Hover tooltips are mouse-only; on touch a tap selects and the side panel shows the details.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; wx: number; wy: number; k: number } | null>(null);
+  const lastTap = useRef({ t: 0, x: 0, y: 0 });
+
+  const startPinch = () => {
+    const [a, b] = [...pointers.current.values()];
+    const m = toViewBox((a.x + b.x) / 2, (a.y + b.y) / 2), v = viewRef.current;
+    // Remember the map point under the fingers' midpoint so it stays there while zooming.
+    pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, wx: (m.x - v.tx) / v.k, wy: (m.y - v.ty) / v.k, k: v.k };
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     cancelAnimationFrame(anim.current);
-    drag.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) {
+      drag.current = { x: e.clientX, y: e.clientY, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: false };
+      return;
+    }
+    // Second finger down: switch to pinching. Mark as moved so the gesture never counts as a tap.
+    const svg = e.currentTarget as Element;
+    for (const id of pointers.current.keys()) if (!svg.hasPointerCapture(id)) svg.setPointerCapture(id);
+    if (drag.current) drag.current.moved = true;
+    else drag.current = { x: e.clientX, y: e.clientY, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: true };
+    startPinch();
+    setTip(null);
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pz = pinch.current;
+    if (pz && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const m = toViewBox((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const k = Math.max(MIN_K, Math.min(MAX_K, pz.k * Math.hypot(a.x - b.x, a.y - b.y) / pz.dist));
+      setView({ k, tx: m.x - pz.wx * k, ty: m.y - pz.wy * k });
+      return;
+    }
     const d = drag.current;
     if (!d) return;
-    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < (e.pointerType === "mouse" ? 4 : 8)) return;
     if (!d.moved) { d.moved = true; (e.currentTarget as Element).setPointerCapture(e.pointerId); }
     const a = toViewBox(d.x, d.y), b = toViewBox(e.clientX, e.clientY);
     setView(v => ({ ...v, tx: d.tx + (b.x - a.x), ty: d.ty + (b.y - a.y) }));
     setTip(null);
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!pointers.current.delete(e.pointerId)) return;
+    const left = [...pointers.current.values()];
+    if (left.length >= 2) { startPinch(); return; }
+    if (left.length === 1) {
+      // Lifted one finger of a pinch: keep panning with the other one, from where it is now.
+      pinch.current = null;
+      drag.current = { x: left[0].x, y: left[0].y, tx: viewRef.current.tx, ty: viewRef.current.ty, moved: true };
+      return;
+    }
+    pinch.current = null;
+    if (e.type === "pointerup" && drag.current && !drag.current.moved) {
+      const now = performance.now(), lt = lastTap.current;
+      if (now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 30) {
+        lastTap.current = { t: 0, x: 0, y: 0 };
+        const v = toViewBox(e.clientX, e.clientY), cur = viewRef.current;
+        const k = Math.min(MAX_K, cur.k * 2);
+        animateTo({ k, tx: v.x - (v.x - cur.tx) * (k / cur.k), ty: v.y - (v.y - cur.ty) * (k / cur.k) });
+      } else lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+    }
+    endDrag();
   };
   const endDrag = () => { setTimeout(() => { drag.current = null; }, 0); };
   const click = (s: Selection) => (e: React.MouseEvent) => {
@@ -1514,7 +1622,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
   };
 
   const showTip = (content: ReactNode) => (e: React.PointerEvent) => {
-    if (drag.current?.moved) return;
+    if (drag.current?.moved || e.pointerType !== "mouse") return;
     const r = wrapRef.current!.getBoundingClientRect();
     setTip({ x: e.clientX - r.left, y: e.clientY - r.top, content });
   };
@@ -1604,6 +1712,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
             onClick={click({ kind: "island", id: i.id })}
             onPointerEnter={showTip(<IslandTip i={i} hidden={hidden(i)} />)} onPointerMove={showTip(<IslandTip i={i} hidden={hidden(i)} />)} onPointerLeave={hideTip}
           >
+            <circle r={s * 2} fill="transparent" /> {/* generous tap target for fingers */}
             {hi && <circle r={s * 2.4} fill="none" stroke="#fde68a" strokeWidth={1.2 * ps} className="animate-pulse" />}
             {settings.background === "chart" && i.id !== "everdoor" && (
               <path d={islandPath(i.id, s * 1.25)} fill={hidden(i) ? "#334155" : "#e9d8b4"} stroke={col} strokeWidth={0.9 * ps} />
@@ -1731,7 +1840,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden bg-[#0b1622]" onPointerLeave={hideTip}>
       <svg
         ref={svgRef} viewBox={`${VB.x} ${VB.y} ${VB.w} ${VB.h}`} className="h-full w-full touch-none select-none"
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         onClick={() => { if (!drag.current?.moved) onSelect(null); }}
         style={{ cursor: drag.current?.moved ? "grabbing" : "grab" }}
       >
@@ -1755,10 +1864,10 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
       </svg>
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 right-4 flex flex-col overflow-hidden rounded-lg border border-white/10 bg-slate-900/80 shadow-lg backdrop-blur">
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => zoomBy(1.5)} title="Zoom in"><Plus size={16} /></button>
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => zoomBy(1 / 1.5)} title="Zoom out"><Minus size={16} /></button>
-        <button className="p-2 text-slate-200 hover:bg-white/10" onClick={() => animateTo({ k: 1, tx: 0, ty: 0 })} title="Reset view"><LocateFixed size={16} /></button>
+      <div className="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-lg border border-white/10 bg-slate-900/80 shadow-lg backdrop-blur sm:bottom-4 sm:right-4">
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => zoomBy(1.5)} title="Zoom in" aria-label="Zoom in"><Plus size={16} /></button>
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => zoomBy(1 / 1.5)} title="Zoom out" aria-label="Zoom out"><Minus size={16} /></button>
+        <button className="p-2.5 text-slate-200 hover:bg-white/10 pointer-fine:p-2" onClick={() => animateTo({ k: 1, tx: 0, ty: 0 })} title="Reset view" aria-label="Reset view"><LocateFixed size={16} /></button>
       </div>
       {settings.background === "wiki" && bgFailed && (
         <div className="absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-amber-900/90 px-3 py-1.5 text-xs text-amber-100">
@@ -1768,7 +1877,7 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
       <Legend />
       {tip && (
         <div className="pointer-events-none absolute z-20 max-w-sm rounded-lg border border-white/10 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-xl"
-          style={{ left: Math.min(tip.x + 14, (wrapRef.current?.clientWidth ?? 0) - 300), top: tip.y + 14 }}>
+          style={{ left: Math.max(8, Math.min(tip.x + 14, (wrapRef.current?.clientWidth ?? 0) - 300)), top: tip.y + 14 }}>
           {tip.content}
         </div>
       )}
@@ -1806,10 +1915,10 @@ function EventTip({ e, label }: { e: SeaEvent; label: string }) {
 function Legend() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="absolute bottom-4 left-4 max-w-xs rounded-lg border border-white/10 bg-slate-900/85 text-xs text-slate-200 shadow-lg backdrop-blur">
-      <button className="w-full px-3 py-1.5 text-left font-semibold hover:bg-white/5" onClick={() => setOpen(o => !o)}>{open ? "▾" : "▸"} Legend</button>
+    <div className="absolute bottom-3 left-3 flex max-h-[calc(100%-1.5rem)] max-w-[min(20rem,calc(100%-4.5rem))] flex-col rounded-lg border border-white/10 bg-slate-900/85 text-xs text-slate-200 shadow-lg backdrop-blur sm:bottom-4 sm:left-4">
+      <button className="w-full shrink-0 px-3 py-2 text-left font-semibold hover:bg-white/5 pointer-fine:py-1.5" onClick={() => setOpen(o => !o)}>{open ? "▾" : "▸"} Legend</button>
       {open && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 pb-3">
+        <div className="grid min-h-0 grid-cols-2 gap-x-4 gap-y-1 overflow-y-auto px-3 pb-3">
           {Object.entries(REGION_COLORS).map(([r, c]) => (
             <div key={r} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />{r}</div>
           ))}
@@ -13126,6 +13235,111 @@ cat > "src/data/spiritfarer.json" << 'SPIRITFARER_EOF'
   }
  ]
 }
+SPIRITFARER_EOF
+
+cat > "public/icon.svg" << 'SPIRITFARER_EOF'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="sea" cx="50%" cy="55%" r="70%">
+      <stop offset="0%" stop-color="#1c3f5a"/>
+      <stop offset="65%" stop-color="#14304a"/>
+      <stop offset="100%" stop-color="#0b1622"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff4d6"/>
+      <stop offset="30%" stop-color="#f6a76b" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#c2410c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sea)"/>
+  <circle cx="256" cy="232" r="150" fill="url(#glow)"/>
+  <circle cx="256" cy="232" r="46" fill="#fff7e6" stroke="#f97316" stroke-width="10"/>
+  <path d="M96 352 Q136 336 176 352 T256 352 T336 352 T416 352" fill="none" stroke="#9ec9e0" stroke-opacity="0.45" stroke-width="10" stroke-linecap="round"/>
+  <path d="M136 396 Q176 380 216 396 T296 396 T376 396" fill="none" stroke="#9ec9e0" stroke-opacity="0.25" stroke-width="10" stroke-linecap="round"/>
+  <path d="M188 318 L324 318 L304 346 L208 346 Z" fill="#e9d8b4" stroke="#0b1622" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M256 318 L256 250 L296 304 Z" fill="#fdf6e3" stroke="#0b1622" stroke-width="5" stroke-linejoin="round"/>
+</svg>
+SPIRITFARER_EOF
+
+cat > "public/manifest.webmanifest" << 'SPIRITFARER_EOF'
+{
+  "name": "Spiritfarer — Everlight Atlas",
+  "short_name": "Everlight Atlas",
+  "description": "Unofficial interactive island map and quest log for Spiritfarer.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1622",
+  "theme_color": "#132a3e",
+  "categories": ["games", "utilities"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
+SPIRITFARER_EOF
+
+cat > "public/sw.js" << 'SPIRITFARER_EOF'
+// Everlight Atlas service worker: makes the installed app work offline.
+// - The app itself (one self-contained index.html) is network-first, so updates arrive as soon as you're online.
+// - Fonts and wiki artwork are cache-first after the first view, so islands you've browsed keep their pictures offline.
+const VERSION = "v1.1.0";
+const SHELL = `atlas-shell-${VERSION}`;
+const RUNTIME = "atlas-runtime";
+const SHELL_FILES = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const RUNTIME_MAX = 400;
+
+self.addEventListener("install", e => {
+  e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", e => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k.startsWith("atlas-shell-") && k !== SHELL).map(k => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+async function trim(cache) {
+  const keys = await cache.keys();
+  for (const k of keys.slice(0, Math.max(0, keys.length - RUNTIME_MAX))) await cache.delete(k);
+}
+
+self.addEventListener("fetch", e => {
+  const req = e.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+
+  // App shell: network first, fall back to the cached copy when offline.
+  if (req.mode === "navigate" || url.origin === location.origin) {
+    e.respondWith(
+      fetch(req)
+        .then(res => {
+          if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req.mode === "navigate" ? "./" : req, copy)); }
+          return res;
+        })
+        .catch(() => caches.match(req.mode === "navigate" ? "./" : req, { ignoreSearch: true })),
+    );
+    return;
+  }
+
+  // Fonts and wiki images: cache first, then network (opaque cross-origin responses are fine to cache).
+  if (/fonts\.(googleapis|gstatic)\.com$|(^|\.)(wikia\.nocookie\.net|fandom\.com)$/.test(url.hostname) || req.destination === "image") {
+    e.respondWith(
+      caches.open(RUNTIME).then(async cache => {
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        const res = await fetch(req);
+        if (res.ok || res.type === "opaque") { cache.put(req, res.clone()); trim(cache); }
+        return res;
+      }),
+    );
+  }
+});
 SPIRITFARER_EOF
 
 # ── Install & Build ───────────────────────────────────────────────────────────
