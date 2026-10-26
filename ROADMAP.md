@@ -15,7 +15,7 @@ This project follows **[Semantic Versioning](https://semver.org)**: `MAJOR.MINOR
 | **MINOR** | New features added, fully backwards compatible | `1.0.0` → `1.1.0` |
 | **PATCH** | Bug fixes, data corrections, typo fixes, no new features | `1.0.0` → `1.0.1` |
 
-**Current release: `v1.1.0`**
+**Current release: `v1.1.1`**
 
 ---
 
@@ -46,6 +46,10 @@ This project follows **[Semantic Versioning](https://semver.org)**: `MAJOR.MINOR
 - [x] Multi-touch map: pinch to zoom, two-finger pan, double-tap to zoom in
 - [x] Phone layout: dynamic viewport height, notch / safe-area padding, adjustable map/panel split, larger tap targets
 - [x] No accidental page zoom when typing in search boxes on iOS
+
+### v1.1.1
+- [x] Fix: wiki map and island art showed Fandom's "No image" placeholder on the hosted site (Fandom blocks hotlinks by Referer)
+- [x] Phones load a lighter 2048 px wiki map; the chart is shown if the wiki map never loads
 
 ---
 

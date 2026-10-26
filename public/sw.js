@@ -1,9 +1,10 @@
 // Everlight Atlas service worker: makes the installed app work offline.
 // - The app itself (one self-contained index.html) is network-first, so updates arrive as soon as you're online.
 // - Fonts and wiki artwork are cache-first after the first view, so islands you've browsed keep their pictures offline.
-const VERSION = "v1.1.0";
+const VERSION = "v1.1.1";
 const SHELL = `atlas-shell-${VERSION}`;
-const RUNTIME = "atlas-runtime";
+// Bumped in v1.1.1 to drop the "No image" placeholders cached while requests still carried a Referer.
+const RUNTIME = "atlas-runtime-2";
 const SHELL_FILES = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const RUNTIME_MAX = 400;
 
@@ -14,7 +15,7 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k.startsWith("atlas-shell-") && k !== SHELL).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => (k.startsWith("atlas-shell-") && k !== SHELL) || (k.startsWith("atlas-runtime") && k !== RUNTIME)).map(k => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });

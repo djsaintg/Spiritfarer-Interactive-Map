@@ -52,7 +52,7 @@ cat > "package.json" << 'SPIRITFARER_EOF'
 {
   "name": "spiritfarer-map",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -122,6 +122,8 @@ cat > "index.html" << 'SPIRITFARER_EOF'
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Spiritfarer — Everlight Atlas</title>
     <meta name="description" content="Unofficial interactive island map and quest log for Spiritfarer." />
+    <!-- Fandom's image CDN answers hotlinks from other sites with a "No image" placeholder, so send no Referer. -->
+    <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#132a3e" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1416,6 +1418,10 @@ import type { ProgressApi, Settings } from "@/store";
 const B = data.worldMap.bounds;
 const VB = { x: B.x0, y: -B.yTop, w: B.x1 - B.x0, h: B.yTop - B.yBottom };
 const MIN_K = 0.9, MAX_K = 10;
+// The wiki map is 3384×2542 (8.6 MP). Phones can silently fail to paint an image that large inside a scaled SVG,
+// so touch devices get the wiki's 2048 px rendition (3.1 MP) instead.
+const WIKI_BG = img(data.worldMap.url) +
+  (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? "/scale-to-width-down/2048" : "");
 
 export const EVENT_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   jellyfish: { icon: Droplets, color: "#86efac" },
@@ -1473,6 +1479,15 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
   viewRef.current = view;
   const [tip, setTip] = useState<Tip | null>(null);
   const [bgFailed, setBgFailed] = useState(false);
+  const bgLoaded = useRef(false);
+  // Retry each time the wiki background is picked, and fall back to the chart if the image never arrives.
+  useEffect(() => {
+    if (settings.background !== "wiki") return;
+    setBgFailed(false);
+    if (bgLoaded.current) return;
+    const t = setTimeout(() => { if (!bgLoaded.current) setBgFailed(true); }, 20000);
+    return () => clearTimeout(t);
+  }, [settings.background]);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null);
   const anim = useRef<number>(0);
   const { layers, showSpoilers } = settings;
@@ -1677,8 +1692,8 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     <g>
       <rect x={VB.x - 400} y={VB.y - 400} width={VB.w + 800} height={VB.h + 800} fill="#0b0b0b" />
       <image
-        href={img(data.worldMap.url)} x={B.x0} y={-B.yTop} width={B.x1 - B.x0} height={B.yTop - B.yBottom}
-        preserveAspectRatio="none" onError={() => setBgFailed(true)}
+        href={WIKI_BG} x={B.x0} y={-B.yTop} width={B.x1 - B.x0} height={B.yTop - B.yBottom}
+        preserveAspectRatio="none" onLoad={() => { bgLoaded.current = true; }} onError={() => setBgFailed(true)}
       />
     </g>
   );
@@ -13286,9 +13301,10 @@ cat > "public/sw.js" << 'SPIRITFARER_EOF'
 // Everlight Atlas service worker: makes the installed app work offline.
 // - The app itself (one self-contained index.html) is network-first, so updates arrive as soon as you're online.
 // - Fonts and wiki artwork are cache-first after the first view, so islands you've browsed keep their pictures offline.
-const VERSION = "v1.1.0";
+const VERSION = "v1.1.1";
 const SHELL = `atlas-shell-${VERSION}`;
-const RUNTIME = "atlas-runtime";
+// Bumped in v1.1.1 to drop the "No image" placeholders cached while requests still carried a Referer.
+const RUNTIME = "atlas-runtime-2";
 const SHELL_FILES = ["./", "./manifest.webmanifest", "./icon.svg", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 const RUNTIME_MAX = 400;
 
@@ -13299,7 +13315,7 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k.startsWith("atlas-shell-") && k !== SHELL).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => (k.startsWith("atlas-shell-") && k !== SHELL) || (k.startsWith("atlas-runtime") && k !== RUNTIME)).map(k => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
