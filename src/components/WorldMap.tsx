@@ -10,6 +10,10 @@ import type { ProgressApi, Settings } from "@/store";
 const B = data.worldMap.bounds;
 const VB = { x: B.x0, y: -B.yTop, w: B.x1 - B.x0, h: B.yTop - B.yBottom };
 const MIN_K = 0.9, MAX_K = 10;
+// The wiki map is 3384×2542 (8.6 MP). Phones can silently fail to paint an image that large inside a scaled SVG,
+// so touch devices get the wiki's 2048 px rendition (3.1 MP) instead.
+const WIKI_BG = img(data.worldMap.url) +
+  (typeof matchMedia !== "undefined" && matchMedia("(pointer: coarse)").matches ? "/scale-to-width-down/2048" : "");
 
 export const EVENT_STYLE: Record<string, { icon: LucideIcon; color: string }> = {
   jellyfish: { icon: Droplets, color: "#86efac" },
@@ -67,6 +71,15 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
   viewRef.current = view;
   const [tip, setTip] = useState<Tip | null>(null);
   const [bgFailed, setBgFailed] = useState(false);
+  const bgLoaded = useRef(false);
+  // Retry each time the wiki background is picked, and fall back to the chart if the image never arrives.
+  useEffect(() => {
+    if (settings.background !== "wiki") return;
+    setBgFailed(false);
+    if (bgLoaded.current) return;
+    const t = setTimeout(() => { if (!bgLoaded.current) setBgFailed(true); }, 20000);
+    return () => clearTimeout(t);
+  }, [settings.background]);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null);
   const anim = useRef<number>(0);
   const { layers, showSpoilers } = settings;
@@ -271,8 +284,8 @@ export default function WorldMap({ settings, api, selection, onSelect, focusKey 
     <g>
       <rect x={VB.x - 400} y={VB.y - 400} width={VB.w + 800} height={VB.h + 800} fill="#0b0b0b" />
       <image
-        href={img(data.worldMap.url)} x={B.x0} y={-B.yTop} width={B.x1 - B.x0} height={B.yTop - B.yBottom}
-        preserveAspectRatio="none" onError={() => setBgFailed(true)}
+        href={WIKI_BG} x={B.x0} y={-B.yTop} width={B.x1 - B.x0} height={B.yTop - B.yBottom}
+        preserveAspectRatio="none" onLoad={() => { bgLoaded.current = true; }} onError={() => setBgFailed(true)}
       />
     </g>
   );
